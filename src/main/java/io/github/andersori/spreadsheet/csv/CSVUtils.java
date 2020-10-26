@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Stream;
 import org.apache.commons.io.FilenameUtils;
+import org.apache.tika.io.IOUtils;
 import org.apache.tika.parser.txt.CharsetDetector;
 import org.apache.tika.parser.txt.CharsetMatch;
 import org.springframework.core.io.ByteArrayResource;
@@ -57,7 +58,7 @@ public class CSVUtils {
         .flatMapMany(
             input -> {
               try {
-                return Flux.fromIterable(read(input.readAllBytes(), clazz));
+                return Flux.fromIterable(read(IOUtils.toByteArray(input), clazz));
               } catch (IOException e) {
                 return Flux.error(e);
               }
