@@ -1,4 +1,4 @@
-package io.github.andersori.spreadsheet.xslx.annotation;
+package io.github.andersori.spreadsheet.xlsx.annotation;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;

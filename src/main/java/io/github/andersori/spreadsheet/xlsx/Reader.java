@@ -1,4 +1,4 @@
-package io.github.andersori.spreadsheet.xslx;
+package io.github.andersori.spreadsheet.xlsx;
 
 import org.apache.poi.ss.usermodel.Cell;
 
