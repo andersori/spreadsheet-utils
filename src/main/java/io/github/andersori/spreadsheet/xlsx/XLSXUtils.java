@@ -252,9 +252,10 @@ public class XLSXUtils {
 
                               try {
 
-                                if (clazzField.isEnum()) {
-                                  CellReader cellReader =
-                                      pair.getFirst().getDeclaredAnnotation(CellReader.class);
+                                CellReader cellReader =
+                                    pair.getFirst().getDeclaredAnnotation(CellReader.class);
+
+                                if (clazzField.isEnum() || cellReader != null) {
 
                                   Reader<?> reader =
                                       cellReader.value().getDeclaredConstructor().newInstance();
