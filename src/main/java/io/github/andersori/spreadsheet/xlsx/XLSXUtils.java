@@ -273,6 +273,13 @@ public class XLSXUtils {
                                           Long.parseLong(
                                               NumberToTextConverter.toText(
                                                   cell.getNumericCellValue())));
+                                } else if (clazzField.isAssignableFrom(Integer.class)) {
+                                  pair.getFirst()
+                                      .set(
+                                          info,
+                                          Integer.parseInt(
+                                              NumberToTextConverter.toText(
+                                                  cell.getNumericCellValue())));
                                 } else if (clazzField.isAssignableFrom(Double.class)) {
                                   pair.getFirst()
                                       .set(
