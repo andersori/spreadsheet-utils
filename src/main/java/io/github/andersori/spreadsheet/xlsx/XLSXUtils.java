@@ -85,7 +85,26 @@ public class XLSXUtils {
 
                 try {
                   if (field.get(obj) != null) {
-                    if (field.getType().equals(UUID.class)) {
+
+                    CellWriter cellWriter = field.getDeclaredAnnotation(CellWriter.class);
+
+                    if (cellWriter != null) {
+                      try {
+                        Writer<?> writer =
+                            cellWriter.value().getDeclaredConstructor().newInstance();
+
+                        Method method =
+                            cellWriter.value().getDeclaredMethod("write", Object.class, Cell.class);
+
+                        method.invoke(writer, field.get(obj), cell);
+
+                      } catch (InstantiationException
+                          | InvocationTargetException
+                          | NoSuchMethodException
+                          | SecurityException e) {
+                        return Mono.error(e);
+                      }
+                    } else if (field.getType().equals(UUID.class)) {
                       cell.setCellValue(((UUID) field.get(obj)).toString());
                     } else if (field.getType().equals(Integer.class)) {
                       cell.setCellValue((Integer) field.get(obj));
@@ -113,27 +132,10 @@ public class XLSXUtils {
                     } else if (field.getType().isEnum()) {
                       cell.setCellValue((String) field.get(obj).toString());
                     } else {
-
-                      CellWriter cellWriter = field.getDeclaredAnnotation(CellWriter.class);
-
-                      if (cellWriter != null) {
-                        try {
-                          Writer writer = cellWriter.value().getDeclaredConstructor().newInstance();
-                          Method method =
-                              cellWriter.value().getDeclaredMethod("write", Object.class);
-
-                          cell.setCellValue((String) method.invoke(writer, field.get(obj)));
-                        } catch (InstantiationException
-                            | InvocationTargetException
-                            | NoSuchMethodException
-                            | SecurityException e) {
-                        }
-                      } else {
-                        throw new ResponseStatusException(
-                            HttpStatus.BAD_REQUEST,
-                            "Não é possivel salvar o tipo de dado informado "
-                                + field.getType().getCanonicalName());
-                      }
+                      throw new ResponseStatusException(
+                          HttpStatus.BAD_REQUEST,
+                          "Não é possivel salvar o tipo de dado informado "
+                              + field.getType().getCanonicalName());
                     }
                   } else {
                     cell.setBlank();
@@ -171,7 +173,7 @@ public class XLSXUtils {
       CellProps prop = field.getDeclaredAnnotation(CellProps.class);
       if (prop == null)
         throw new IllegalArgumentException(
-            "Todos os atributos da sua clase deve conter a annotation @ColumnName");
+            "Todos os atributos da sua clase deve conter a annotation @CellProps");
     }
 
     try {

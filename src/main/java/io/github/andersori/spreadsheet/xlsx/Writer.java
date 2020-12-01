@@ -1,6 +1,8 @@
 package io.github.andersori.spreadsheet.xlsx;
 
-public interface Writer {
+import org.apache.poi.ss.usermodel.Cell;
 
-  String write(Object data);
+public interface Writer<T> {
+
+  void write(T data, Cell cell);
 }
