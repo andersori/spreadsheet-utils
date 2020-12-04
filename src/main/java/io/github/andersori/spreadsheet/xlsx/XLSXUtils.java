@@ -58,19 +58,17 @@ public class XLSXUtils {
             int rowNum = 0;
             Row header = sheet.createRow(rowNum++);
 
-            Class<?> clazz = Iterables.get(data, 0).getClass();
-
             for (Field field : Iterables.get(data, 0).getClass().getDeclaredFields()) {
               CellProps column = field.getDeclaredAnnotation(CellProps.class);
 
               if (column == null) {
                 throw new IllegalArgumentException(
-                    "Todos os atributos do seu objeto deve conter a annotation @ColumnName");
+                    "Todos os atributos do seu objeto deve conter a annotation @CellProps");
               }
 
-              if (column.position() < 0 || column.position() >= clazz.getDeclaredFields().length) {
+              if (column.position() < 0) {
                 throw new IllegalArgumentException(
-                    "A posição " + column.position() + " é invalida");
+                    "A posição da coluna " + column.value() + " não pode ser negativa");
               } else {
                 Cell cell = header.createCell(column.position());
                 cell.setCellValue(column.value().toUpperCase());
