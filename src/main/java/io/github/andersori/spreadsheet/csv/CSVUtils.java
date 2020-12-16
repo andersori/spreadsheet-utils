@@ -4,146 +4,101 @@ import com.opencsv.bean.CsvToBeanBuilder;
 import com.opencsv.bean.HeaderColumnNameMappingStrategy;
 import com.opencsv.bean.StatefulBeanToCsv;
 import com.opencsv.bean.StatefulBeanToCsvBuilder;
-import com.opencsv.exceptions.CsvDataTypeMismatchException;
-import com.opencsv.exceptions.CsvRequiredFieldEmptyException;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
+import java.io.BufferedWriter;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.SequenceInputStream;
-import java.io.Writer;
 import java.nio.charset.Charset;
-import java.nio.file.Files;
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
-import java.util.UUID;
-import java.util.stream.Stream;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.tika.io.IOUtils;
-import org.apache.tika.parser.txt.CharsetDetector;
-import org.apache.tika.parser.txt.CharsetMatch;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
+import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.codec.multipart.FilePart;
-import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 public class CSVUtils {
 
-  public static <T> List<T> read(MultipartFile file, Class<T> clazz) {
-    if (!(FilenameUtils.getExtension(file.getOriginalFilename()).equalsIgnoreCase("csv"))) {
-      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Só é permitido o envio de CSV.");
-    }
-
-    try {
-      return read(file.getBytes(), clazz);
-    } catch (IOException e) {
-      throw new RuntimeException("Erro na leitura do CSV", e);
-    }
-  }
-
-  public static <T> Flux<T> read(FilePart file, Class<T> clazz) {
-
+  public static <T> Flux<T> read_UTF_8(Class<T> clazz, FilePart file) {
     if (!(FilenameUtils.getExtension(file.filename()).equalsIgnoreCase("csv"))) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Só é permitido o envio de CSV.");
     }
-
     return file.content()
-        .map(buffer -> buffer.asInputStream())
+        .map(DataBuffer::asInputStream)
         .reduce(SequenceInputStream::new)
         .flatMapMany(
-            input -> {
-              try {
-                return Flux.fromIterable(read(IOUtils.toByteArray(input), clazz));
-              } catch (IOException e) {
-                return Flux.error(e);
-              }
-            });
+            input ->
+                Mono.fromCallable(
+                        () -> read(IOUtils.toByteArray(input), clazz, Charset.forName("UTF-8")))
+                    .flatMapMany(Flux::fromIterable));
   }
 
-  private static <T> List<T> read(byte[] bytes, Class<T> clazz) {
-    List<T> response = new ArrayList<>();
-
-    CharsetDetector detector = new CharsetDetector().setText(bytes);
-    List<CharsetMatch> allOtherscharsets = Arrays.asList(detector.detectAll());
-    CharsetMatch bestCharset = detector.detect();
-
-    String[] charsetsSupported = CharsetDetector.getAllDetectableCharsets();
-
-    CsvToBeanBuilder<T> csvBuilder = null;
-    if (Stream.of(charsetsSupported)
-        .filter(charset -> charset.equalsIgnoreCase(bestCharset.getName()))
-        .findFirst()
-        .isPresent()) {
-      /*UTILIANDO O MELHOR CHARSET*/
-      csvBuilder = new CsvToBeanBuilder<>(bestCharset.getReader());
-    } else if (Stream.of(charsetsSupported)
-        .filter(charset -> charset.equalsIgnoreCase(allOtherscharsets.get(1).getName()))
-        .findFirst()
-        .isPresent()) {
-      /*UTILIANDO O SEGUNDO MELHOR CHARSET*/
-      csvBuilder = new CsvToBeanBuilder<>(allOtherscharsets.get(1).getReader());
-    } else {
-      throw new RuntimeException("Salve seu arquivo como UTF-8 ou ISO-8859-1 e envie novamente");
+  public static <T> Flux<T> read_ISO_8859_1(Class<T> clazz, FilePart file) {
+    if (!(FilenameUtils.getExtension(file.filename()).equalsIgnoreCase("csv"))) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Só é permitido o envio de CSV.");
     }
+    return file.content()
+        .map(DataBuffer::asInputStream)
+        .reduce(SequenceInputStream::new)
+        .flatMapMany(
+            input ->
+                Mono.fromCallable(
+                        () ->
+                            read(IOUtils.toByteArray(input), clazz, Charset.forName("ISO-8859-1")))
+                    .flatMapMany(Flux::fromIterable));
+  }
 
+  private static <T> List<T> read(byte[] bytes, Class<T> clazz, Charset cs) {
     HeaderColumnNameMappingStrategy<T> strategy = new HeaderColumnNameMappingStrategy<T>();
     strategy.setType(clazz);
 
-    response.addAll(
-        csvBuilder
-            .withMappingStrategy(strategy)
-            .withType(clazz)
-            .withSeparator(';')
-            .withIgnoreLeadingWhiteSpace(true)
-            .build()
-            .parse());
+    CsvToBeanBuilder<T> csvBuilder =
+        new CsvToBeanBuilder<>(new InputStreamReader(new ByteArrayInputStream(bytes), cs));
 
-    return response;
+    return csvBuilder
+        .withMappingStrategy(strategy)
+        .withType(clazz)
+        .withSeparator(';')
+        .withIgnoreLeadingWhiteSpace(true)
+        .build()
+        .parse();
   }
 
-  public static <Bean> Mono<Resource> write(Class<Bean> clazz, List<Bean> list, Charset chatset) {
-    File file = null;
-    try {
-      file = File.createTempFile(UUID.randomUUID().toString(), ".csv");
+  public static <Bean> Mono<Resource> write_ISO_8859_1(Class<Bean> clazz, List<Bean> data) {
+    return write(clazz, data, Charset.forName("ISO-8859-1"));
+  }
 
-      FileOutputStream fos = new FileOutputStream(file.getCanonicalFile());
-      Writer writer = new OutputStreamWriter(fos, chatset);
+  public static <Bean> Mono<Resource> write_UTF_8(Class<Bean> clazz, List<Bean> data) {
+    return write(clazz, data, Charset.forName("UTF-8"));
+  }
 
-      try {
-        HeaderColumnNameMappingStrategy<Bean> strategy =
-            new HeaderColumnNameMappingStrategy<Bean>();
-        strategy.setType(clazz);
-
-        StatefulBeanToCsv<Bean> sbc =
-            new StatefulBeanToCsvBuilder<Bean>(writer)
-                .withMappingStrategy(strategy)
-                .withSeparator(';')
-                .build();
-
-        sbc.write(list);
-      } catch (CsvDataTypeMismatchException | CsvRequiredFieldEmptyException e) {
-        file.delete();
-        throw new ResponseStatusException(
-            HttpStatus.BAD_REQUEST, "Error ao salvar dados de exemplo no CSV.", e);
-      } finally {
-        writer.close();
-      }
-      Mono<Resource> res = Mono.just(new ByteArrayResource(Files.readAllBytes(file.toPath())));
-      file.delete();
-      return res;
-    } catch (IOException e) {
-      if (file != null) {
-        file.delete();
-      }
-      throw new ResponseStatusException(
-          HttpStatus.BAD_REQUEST,
-          "Erro ao criar arquivo temporario para gerar um exemplo de CSV.",
-          e);
+  public static <Bean> Mono<Resource> write(Class<Bean> clazz, List<Bean> data, Charset cs) {
+    if (data.isEmpty()) {
+      return Mono.empty();
     }
+    return Mono.fromCallable(
+        () -> {
+          ByteArrayOutputStream inMemory = new ByteArrayOutputStream();
+          BufferedWriter inMemoryStream = new BufferedWriter(new OutputStreamWriter(inMemory, cs));
+
+          HeaderColumnNameMappingStrategy<Bean> strategy =
+              new HeaderColumnNameMappingStrategy<Bean>();
+          strategy.setType(clazz);
+
+          StatefulBeanToCsv<Bean> sbcData =
+              new StatefulBeanToCsvBuilder<Bean>(inMemoryStream)
+                  .withMappingStrategy(strategy)
+                  .withSeparator(';')
+                  .build();
+          sbcData.write(data);
+
+          return new ByteArrayResource(inMemory.toByteArray());
+        });
   }
 }
