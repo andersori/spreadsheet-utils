@@ -7,6 +7,7 @@ import com.opencsv.bean.StatefulBeanToCsvBuilder;
 import java.io.BufferedWriter;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.SequenceInputStream;
@@ -24,6 +25,32 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 public class CSVUtils {
+
+  public static <T> Flux<T> read_UTF_8(Class<T> clazz, Resource resource) {
+    return Mono.fromCallable(() -> read(clazz, resource.getInputStream(), Charset.forName("UTF-8")))
+        .flatMapMany(Flux::fromIterable);
+  }
+
+  public static <T> Flux<T> read_ISO_8859_1(Class<T> clazz, Resource resource) {
+    return Mono.fromCallable(
+            () -> read(clazz, resource.getInputStream(), Charset.forName("ISO-8859-1")))
+        .flatMapMany(Flux::fromIterable);
+  }
+
+  private static <T> List<T> read(Class<T> clazz, InputStream input, Charset cs) {
+    HeaderColumnNameMappingStrategy<T> strategy = new HeaderColumnNameMappingStrategy<T>();
+    strategy.setType(clazz);
+
+    CsvToBeanBuilder<T> csvBuilder = new CsvToBeanBuilder<>(new InputStreamReader(input, cs));
+
+    return csvBuilder
+        .withMappingStrategy(strategy)
+        .withType(clazz)
+        .withSeparator(';')
+        .withIgnoreLeadingWhiteSpace(true)
+        .build()
+        .parse();
+  }
 
   public static <T> Flux<T> read_UTF_8(Class<T> clazz, FilePart file) {
     if (!(FilenameUtils.getExtension(file.filename()).equalsIgnoreCase("csv"))) {
