@@ -335,13 +335,16 @@ public class XLSXUtils {
                           () -> {
                             fileCreated.delete();
                           })
-                      .doOnError(ex -> fileCreated.delete());
+                      .doOnError(ex -> fileCreated.delete())
+                      .doOnError(erro -> erro.printStackTrace());
                 } catch (IOException e) {
+                  e.printStackTrace();
                   fileCreated.delete();
                   return Flux.error(e);
                 }
               });
     } catch (IOException e) {
+      e.printStackTrace();
       return Flux.error(e);
     }
   }
