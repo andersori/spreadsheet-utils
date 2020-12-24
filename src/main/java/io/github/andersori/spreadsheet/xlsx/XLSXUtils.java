@@ -191,11 +191,14 @@ public class XLSXUtils {
 
                   return Flux.fromStream(
                           StreamSupport.stream(workbook.getSheetAt(0).spliterator(), false))
+                      //                      .doOnNext(files ->
+                      // System.out.println(files.toString()))
                       .doOnNext(
                           row -> {
                             if (row.getRowNum() == 0) {
                               fieldProp.stream()
                                   .map(Pair::getSecond)
+                                  .peek(filess -> System.out.println(filess.toString()))
                                   .forEach(
                                       prop -> {
                                         Cell cell = row.getCell(prop.position());
@@ -255,6 +258,14 @@ public class XLSXUtils {
                                 CellReader cellReader =
                                     pair.getFirst().getDeclaredAnnotation(CellReader.class);
 
+                                // TODO: Identificando TIPO coluna
+
+                                //                                System.out.println(
+                                //                                    "Tipo coluna ecell: " +
+                                // cell.getCellType().toString());
+                                //
+                                // System.out.println(cell.toString());
+
                                 if (clazzField.isEnum() || cellReader != null) {
 
                                   Reader<?> reader =
@@ -265,43 +276,73 @@ public class XLSXUtils {
 
                                   pair.getFirst().set(info, method.invoke(reader, cell));
                                 } else if (clazzField.isAssignableFrom(Long.class)) {
-                                  pair.getFirst()
-                                      .set(
-                                          info,
-                                          Long.parseLong(
-                                              NumberToTextConverter.toText(
-                                                  cell.getNumericCellValue())));
-                                } else if (clazzField.isAssignableFrom(Integer.class)) {
-                                  pair.getFirst()
-                                      .set(
-                                          info,
-                                          Integer.parseInt(
-                                              NumberToTextConverter.toText(
-                                                  cell.getNumericCellValue())));
-                                } else if (clazzField.isAssignableFrom(Double.class)) {
-                                  pair.getFirst()
-                                      .set(
-                                          info,
-                                          Double.parseDouble(
-                                              NumberToTextConverter.toText(
-                                                  cell.getNumericCellValue())));
-                                } else if (clazzField.isAssignableFrom(String.class)) {
+
                                   if (cell.getCellType().equals(CellType.STRING)) {
-                                    pair.getFirst().set(info, cell.getStringCellValue());
-                                  } else if (cell.getCellType().equals(CellType.NUMERIC)) {
+
+                                    pair.getFirst()
+                                        .set(info, Long.parseLong(cell.getStringCellValue()));
+                                  } else {
                                     pair.getFirst()
                                         .set(
                                             info,
-                                            NumberToTextConverter.toText(
-                                                cell.getNumericCellValue()));
+                                            Long.parseLong(
+                                                NumberToTextConverter.toText(
+                                                    cell.getNumericCellValue())));
+                                  }
+                                } else if (clazzField.isAssignableFrom(Integer.class)) {
+
+                                  if (cell.getCellType().equals(CellType.STRING)) {
+
+                                    pair.getFirst()
+                                        .set(info, Integer.parseInt(cell.getStringCellValue()));
                                   } else {
-                                    throw new RuntimeException(
-                                        "Não foi possível atribuir o valor da linha "
-                                            + row.getRowNum()
-                                            + " coluna "
-                                            + pair.getSecond().position()
-                                            + " na variavel "
-                                            + pair.getFirst().getName());
+                                    pair.getFirst()
+                                        .set(
+                                            info,
+                                            Integer.parseInt(
+                                                NumberToTextConverter.toText(
+                                                    cell.getNumericCellValue())));
+                                  }
+
+                                } else if (clazzField.isAssignableFrom(Double.class)) {
+
+                                  if (cell.getCellType().equals(CellType.STRING)) {
+
+                                    pair.getFirst()
+                                        .set(
+                                            info,
+                                            Double.parseDouble(
+                                                cell.getStringCellValue().replace(",", ".")));
+                                  } else {
+                                    pair.getFirst()
+                                        .set(
+                                            info,
+                                            Double.parseDouble(
+                                                NumberToTextConverter.toText(
+                                                    cell.getNumericCellValue())));
+                                  }
+
+                                } else if (clazzField.isAssignableFrom(String.class)) {
+                                  try {
+                                    if (cell.getCellType().equals(CellType.STRING)) {
+                                      pair.getFirst().set(info, cell.getStringCellValue());
+                                    } else if (cell.getCellType().equals(CellType.NUMERIC)) {
+                                      pair.getFirst()
+                                          .set(
+                                              info,
+                                              NumberToTextConverter.toText(
+                                                  cell.getNumericCellValue()));
+                                    } else {
+                                      throw new RuntimeException(
+                                          "Não foi possível atribuir o valor da linha "
+                                              + row.getRowNum()
+                                              + " coluna "
+                                              + pair.getSecond().position()
+                                              + " na variavel "
+                                              + pair.getFirst().getName());
+                                    }
+                                  } catch (Exception e) {
+                                    e.printStackTrace();
                                   }
                                 } else if (clazzField.isAssignableFrom(LocalDate.class)) {
                                   pair.getFirst()
