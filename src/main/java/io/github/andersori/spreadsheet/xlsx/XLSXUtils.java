@@ -22,6 +22,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
+import org.apache.poi.hssf.usermodel.HSSFWorkbook;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellStyle;
 import org.apache.poi.ss.usermodel.CellType;
@@ -181,7 +182,6 @@ public class XLSXUtils {
           .flatMapMany(
               fileCreated -> {
                 try (XSSFWorkbook workbook = new XSSFWorkbook(new FileInputStream(fileCreated))) {
-
                   Set<Pair<Field, CellProps>> fieldProp =
                       Stream.of(clazz.getDeclaredFields())
                           .peek(field -> field.setAccessible(true))
@@ -191,8 +191,7 @@ public class XLSXUtils {
 
                   return Flux.fromStream(
                           StreamSupport.stream(workbook.getSheetAt(0).spliterator(), false))
-                      //                      .doOnNext(files ->
-                      // System.out.println(files.toString()))
+                      .doOnNext(files -> System.out.println(files.toString()))
                       .doOnNext(
                           row -> {
                             if (row.getRowNum() == 0) {
@@ -230,6 +229,7 @@ public class XLSXUtils {
                                       });
                             }
                           })
+                      .doOnError(ex -> ex.printStackTrace())
                       .doOnError(ex -> fileCreated.delete())
                       .filter(row -> row.getRowNum() != 0)
                       .map(
@@ -258,13 +258,223 @@ public class XLSXUtils {
                                 CellReader cellReader =
                                     pair.getFirst().getDeclaredAnnotation(CellReader.class);
 
-                                // TODO: Identificando TIPO coluna
+                                if (clazzField.isEnum() || cellReader != null) {
 
-                                //                                System.out.println(
-                                //                                    "Tipo coluna ecell: " +
-                                // cell.getCellType().toString());
-                                //
-                                // System.out.println(cell.toString());
+                                  Reader<?> reader =
+                                      cellReader.value().getDeclaredConstructor().newInstance();
+
+                                  Method method =
+                                      cellReader.value().getDeclaredMethod("read", Cell.class);
+
+                                  pair.getFirst().set(info, method.invoke(reader, cell));
+                                } else if (clazzField.isAssignableFrom(Long.class)) {
+
+                                  if (cell.getCellType().equals(CellType.STRING)) {
+
+                                    pair.getFirst()
+                                        .set(info, Long.parseLong(cell.getStringCellValue()));
+                                  } else {
+                                    pair.getFirst()
+                                        .set(
+                                            info,
+                                            Long.parseLong(
+                                                NumberToTextConverter.toText(
+                                                    cell.getNumericCellValue())));
+                                  }
+                                } else if (clazzField.isAssignableFrom(Integer.class)) {
+
+                                  if (cell.getCellType().equals(CellType.STRING)) {
+
+                                    pair.getFirst()
+                                        .set(info, Integer.parseInt(cell.getStringCellValue()));
+                                  } else {
+                                    pair.getFirst()
+                                        .set(
+                                            info,
+                                            Integer.parseInt(
+                                                NumberToTextConverter.toText(
+                                                    cell.getNumericCellValue())));
+                                  }
+
+                                } else if (clazzField.isAssignableFrom(Double.class)) {
+
+                                  if (cell.getCellType().equals(CellType.STRING)) {
+
+                                    pair.getFirst()
+                                        .set(
+                                            info,
+                                            Double.parseDouble(
+                                                cell.getStringCellValue().replace(",", ".")));
+                                  } else {
+                                    pair.getFirst()
+                                        .set(
+                                            info,
+                                            Double.parseDouble(
+                                                NumberToTextConverter.toText(
+                                                    cell.getNumericCellValue())));
+                                  }
+
+                                } else if (clazzField.isAssignableFrom(String.class)) {
+                                  try {
+                                    if (cell.getCellType().equals(CellType.STRING)) {
+                                      pair.getFirst().set(info, cell.getStringCellValue());
+                                    } else if (cell.getCellType().equals(CellType.NUMERIC)) {
+                                      pair.getFirst()
+                                          .set(
+                                              info,
+                                              NumberToTextConverter.toText(
+                                                  cell.getNumericCellValue()));
+                                    } else {
+                                      throw new RuntimeException(
+                                          "Não foi possível atribuir o valor da linha "
+                                              + row.getRowNum()
+                                              + " coluna "
+                                              + pair.getSecond().position()
+                                              + " na variavel "
+                                              + pair.getFirst().getName());
+                                    }
+                                  } catch (Exception e) {
+                                    e.printStackTrace();
+                                  }
+                                } else if (clazzField.isAssignableFrom(LocalDate.class)) {
+                                  pair.getFirst()
+                                      .set(
+                                          info,
+                                          cell.getDateCellValue()
+                                              .toInstant()
+                                              .atZone(ZoneId.systemDefault())
+                                              .toLocalDate());
+                                } else if (clazzField.isPrimitive()) {
+                                  throw new RuntimeException(
+                                      "Não é permitido o uso de tipo primitivo para leitura de xlsx");
+                                } else {
+                                  throw new RuntimeException(
+                                      clazzField.getCanonicalName() + " não possui implementação");
+                                }
+                              } catch (IllegalArgumentException | IllegalAccessException e) {
+                                throw new RuntimeException("Erro ao ler dados do xlsx", e);
+                              } catch (InstantiationException
+                                  | InvocationTargetException
+                                  | NoSuchMethodException
+                                  | SecurityException e) {
+                                throw new RuntimeException(
+                                    "Erro ao ler dados customizados do xlsx", e);
+                              }
+                            }
+
+                            return info;
+                          })
+                      .doOnComplete(
+                          () -> {
+                            fileCreated.delete();
+                          })
+                      .doOnError(ex -> fileCreated.delete())
+                      .doOnError(erro -> erro.printStackTrace());
+                } catch (IOException e) {
+                  e.printStackTrace();
+                  fileCreated.delete();
+                  return Flux.error(e);
+                }
+              });
+    } catch (IOException e) {
+      e.printStackTrace();
+      return Flux.error(e);
+    }
+  }
+
+  public static <T> Flux<T> readXls(FilePart file, Class<T> clazz) {
+
+    for (Field field : clazz.getDeclaredFields()) {
+      CellProps prop = field.getDeclaredAnnotation(CellProps.class);
+      if (prop == null)
+        throw new IllegalArgumentException(
+            "Todos os atributos da sua clase deve conter a annotation @CellProps");
+    }
+
+    try {
+      return Mono.just(
+              File.createTempFile(UUID.randomUUID().toString() + "-alteracao-proposta", ".xslx"))
+          .doOnNext(fileCreated -> file.transferTo(fileCreated))
+          .flatMapMany(
+              fileCreated -> {
+                try (HSSFWorkbook workbook = new HSSFWorkbook(new FileInputStream(fileCreated))) {
+                  Set<Pair<Field, CellProps>> fieldProp =
+                      Stream.of(clazz.getDeclaredFields())
+                          .peek(field -> field.setAccessible(true))
+                          .map(
+                              field -> Pair.of(field, field.getDeclaredAnnotation(CellProps.class)))
+                          .collect(Collectors.toSet());
+
+                  return Flux.fromStream(
+                          StreamSupport.stream(workbook.getSheetAt(0).spliterator(), false))
+                      .doOnNext(files -> System.out.println(files.toString()))
+                      .doOnNext(
+                          row -> {
+                            if (row.getRowNum() == 0) {
+                              fieldProp.stream()
+                                  .map(Pair::getSecond)
+                                  .peek(filess -> System.out.println(filess.toString()))
+                                  .forEach(
+                                      prop -> {
+                                        Cell cell = row.getCell(prop.position());
+                                        System.out.println("Posição: " + prop.position());
+                                        if (cell != null) {
+                                          String cellName = "";
+                                          try {
+                                            cellName = cell.getStringCellValue();
+                                          } catch (RuntimeException e) {
+                                            throw new RuntimeException(
+                                                "Erro na analise do cabeçalho");
+                                          }
+                                          System.out.println(cellName);
+                                          System.out.println(prop.value());
+                                          if (!cellName.equalsIgnoreCase(prop.value())) {
+                                            throw new RuntimeException(
+                                                "A coluna na posição "
+                                                    + prop.position()
+                                                    + " deve ser "
+                                                    + prop.value()
+                                                    + ".");
+                                          }
+                                        } else {
+                                          throw new RuntimeException(
+                                              "Coluna "
+                                                  + prop.value()
+                                                  + " na posição "
+                                                  + prop.position()
+                                                  + " não encontrada.");
+                                        }
+                                      });
+                            }
+                          })
+                      .doOnError(ex -> ex.printStackTrace())
+                      .doOnError(ex -> fileCreated.delete())
+                      .filter(row -> row.getRowNum() != 0)
+                      .map(
+                          row -> {
+                            T info = null;
+
+                            try {
+                              info = clazz.getConstructor().newInstance();
+                            } catch (Exception e) {
+                              throw new RuntimeException(
+                                  "Erro ao instanciar objeto para leitura do XLSX");
+                            }
+
+                            for (Pair<Field, CellProps> pair : fieldProp) {
+                              Cell cell = row.getCell(pair.getSecond().position());
+
+                              if (cell == null
+                                  || (cell != null && cell.getCellType().equals(CellType.BLANK))) {
+                                continue;
+                              }
+
+                              Class<?> clazzField = pair.getFirst().getType();
+
+                              try {
+
+                                CellReader cellReader =
+                                    pair.getFirst().getDeclaredAnnotation(CellReader.class);
 
                                 if (clazzField.isEnum() || cellReader != null) {
 
