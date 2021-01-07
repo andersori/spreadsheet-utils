@@ -78,6 +78,7 @@ public class CSVUtils {
                 Mono.fromCallable(
                         () ->
                             read(IOUtils.toByteArray(input), clazz, Charset.forName("ISO-8859-1")))
+                    .doOnNext(csv -> System.out.println(csv.toString()))
                     .flatMapMany(Flux::fromIterable));
   }
 
