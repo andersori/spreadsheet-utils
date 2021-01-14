@@ -4,6 +4,8 @@ import com.opencsv.bean.CsvToBeanBuilder;
 import com.opencsv.bean.HeaderColumnNameMappingStrategy;
 import com.opencsv.bean.StatefulBeanToCsv;
 import com.opencsv.bean.StatefulBeanToCsvBuilder;
+import com.opencsv.exceptions.CsvDataTypeMismatchException;
+import com.opencsv.exceptions.CsvRequiredFieldEmptyException;
 import java.io.BufferedWriter;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -78,7 +80,6 @@ public class CSVUtils {
                 Mono.fromCallable(
                         () ->
                             read(IOUtils.toByteArray(input), clazz, Charset.forName("ISO-8859-1")))
-                    .doOnNext(csv -> System.out.println(csv.toString()))
                     .flatMapMany(Flux::fromIterable));
   }
 
@@ -110,6 +111,34 @@ public class CSVUtils {
     if (data.isEmpty()) {
       return Mono.empty();
     }
+    for (Bean d : data) {
+      ByteArrayOutputStream inMemory = new ByteArrayOutputStream();
+      BufferedWriter inMemoryStream = new BufferedWriter(new OutputStreamWriter(inMemory, cs));
+      System.out.println(inMemoryStream.toString());
+      HeaderColumnNameMappingStrategy<Bean> strategy = new HeaderColumnNameMappingStrategy<Bean>();
+      System.out.println(strategy.toString());
+
+      strategy.setType(clazz);
+
+      StatefulBeanToCsv<Bean> sbcData =
+          new StatefulBeanToCsvBuilder<Bean>(inMemoryStream)
+              .withMappingStrategy(strategy)
+              .withSeparator(';')
+              .build();
+      try {
+        sbcData.write(d);
+      } catch (CsvDataTypeMismatchException e) {
+        // TODO Auto-generated catch block
+        e.printStackTrace();
+      } catch (CsvRequiredFieldEmptyException e) {
+        // TODO Auto-generated catch block
+        e.printStackTrace();
+      }
+
+      Resource res = new ByteArrayResource(inMemory.toByteArray());
+      System.out.println(res.toString());
+    }
+
     return Mono.fromCallable(
         () -> {
           ByteArrayOutputStream inMemory = new ByteArrayOutputStream();
@@ -125,6 +154,64 @@ public class CSVUtils {
                   .withSeparator(';')
                   .build();
           sbcData.write(data);
+
+          return new ByteArrayResource(inMemory.toByteArray());
+        });
+  }
+
+  public static <Bean> Mono<Resource> write_ISO_8859_1Posicao(Class<Bean> clazz, List<Bean> data) {
+    return writePosicaoCsv(clazz, data, Charset.forName("ISO-8859-1"));
+  }
+
+  public static <Bean> Mono<Resource> writePosicaoCsv(
+      Class<Bean> clazz, List<Bean> data, Charset cs) {
+    if (data.isEmpty()) {
+      return Mono.empty();
+    }
+    for (Bean d : data) {
+      ByteArrayOutputStream inMemory = new ByteArrayOutputStream();
+      BufferedWriter inMemoryStream = new BufferedWriter(new OutputStreamWriter(inMemory, cs));
+
+      CustomMappingStrategy<Bean> strategy = new CustomMappingStrategy<Bean>();
+      strategy.setType(clazz);
+
+      StatefulBeanToCsv<Bean> writer =
+          new StatefulBeanToCsvBuilder<Bean>(inMemoryStream)
+              .withMappingStrategy(strategy)
+              .withSeparator(';')
+              .withApplyQuotesToAll(false)
+              .build();
+
+      try {
+        writer.write(d);
+
+      } catch (CsvDataTypeMismatchException e) {
+        // TODO Auto-generated catch block
+        e.printStackTrace();
+      } catch (CsvRequiredFieldEmptyException e) {
+        // TODO Auto-generated catch block
+        e.printStackTrace();
+      }
+
+      Resource res = new ByteArrayResource(inMemory.toByteArray());
+      System.out.println(res.toString());
+    }
+
+    return Mono.fromCallable(
+        () -> {
+          ByteArrayOutputStream inMemory = new ByteArrayOutputStream();
+          BufferedWriter inMemoryStream = new BufferedWriter(new OutputStreamWriter(inMemory, cs));
+
+          CustomMappingStrategy<Bean> strategy = new CustomMappingStrategy<Bean>();
+          strategy.setType(clazz);
+
+          StatefulBeanToCsv<Bean> writer =
+              new StatefulBeanToCsvBuilder<Bean>(inMemoryStream)
+                  .withMappingStrategy(strategy)
+                  .withSeparator(';')
+                  .withApplyQuotesToAll(false)
+                  .build();
+          writer.write(data);
 
           return new ByteArrayResource(inMemory.toByteArray());
         });
